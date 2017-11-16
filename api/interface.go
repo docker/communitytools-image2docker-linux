@@ -23,6 +23,7 @@ type Packager struct {
 	Tag         string
 	Category    string
 	Description string
+	Supports    string
 }
 
 type Product struct {

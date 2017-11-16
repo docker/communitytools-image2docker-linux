@@ -7,6 +7,8 @@ import (
 	"fmt"
 	"github.com/docker/v2c/api"
 	"github.com/docker/v2c/system"
+	"path/filepath"
+	"strings"
 )
 
 var errNotYetImplemented = errors.New(`not yet implemented`)
@@ -141,26 +143,35 @@ func Build(ctx context.Context, target string, noclean bool) (string, error) {
 			return ``, err
 		}
 
+		defer func() {
+			if !noclean {
+				if err = system.RemoveTransportVolume(ctx); err != nil {
+					fmt.Printf("Unable to remove the transport volume due to: %v\n", err)
+				}
+			} else {
+				fmt.Println(`The transport volume remains intact.`)
+			}
+		}()
+
 		if len(components.Packagers) == 0 {
+			system.RemoveTransportVolume(ctx)
 			return ``, errors.New(`no installed packagers`)
 		}
-		packager := choosePackager(components)
+
+		packager, err := choosePackager(components, target)
+		if err != nil {
+			system.RemoveTransportVolume(ctx)
+			return ``, err
+		}
 
 		pc, err = system.LaunchPackager(ctx, packager, target)
 		if err != nil {
+			system.RemoveTransportVolume(ctx)
 			return ``, err
 		}
+
 		defer system.RemoveContainer(ctx, pc)
 	}
-	defer func() {
-		if !noclean {
-			if err = system.RemoveTransportVolume(ctx); err != nil {
-				fmt.Printf("Unable to remove the transport volume due to: %v\n", err)
-			}
-		} else {
-			fmt.Println(`The transport volume remains intact.`)
-		}
-	}()
 
 	// Launch Detectives
 	dr := make(chan detectiveResponse)
@@ -181,12 +192,12 @@ func Build(ctx context.Context, target string, noclean bool) (string, error) {
 	}
 
 	// Shutdown the Packager
-	if len(pc) > 0 {
+	/*	if len(pc) > 0 {
 		err = system.RemoveContainer(ctx, pc)
 		if err != nil {
 			return ``, err
 		}
-	}
+	} */
 
 	// Should quit early?
 	if pCount == 0 {
@@ -291,8 +302,33 @@ func collectProvisionerResponses(ctx context.Context, c int, rc chan provisioner
 	return nil
 }
 
-func choosePackager(c system.Components) api.Packager {
-	return c.Packagers[0]
+func choosePackager(c system.Components, target string) (api.Packager, error) {
+	var def *api.Packager = nil
+
+	myExt := filepath.Ext(target)
+	if myExt == "" {
+		myExt = "default"
+	} else {
+		myExt = strings.Replace(myExt, ".", "", 1)
+	}
+
+	for _, p := range c.Packagers {
+		exts := strings.Split(p.Supports, ",")
+		for _, ext := range exts {
+			if myExt == ext {
+				return p, nil
+			}
+			if ext == "default" {
+				def = &p
+			}
+		}
+	}
+
+	if def == nil {
+		return c.Packagers[0], fmt.Errorf("Couldn't find a packager for %v", target)
+	} else {
+		return *def, nil
+	}
 }
 
 //

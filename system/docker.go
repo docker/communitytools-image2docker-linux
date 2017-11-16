@@ -28,6 +28,7 @@ var (
 		`component`:   `com.docker.v2c.component`,
 		`category`:    `com.docker.v2c.component.category`,
 		`description`: `com.docker.v2c.component.description`,
+		`supports`:    `com.docker.v2c.component.supports`,
 		`related`:     `com.docker.v2c.component.rel`,
 	}
 )
@@ -479,6 +480,7 @@ func packagersFromImageSummary(i types.ImageSummary) []api.Packager {
 				Tag:         p[1],
 				Category:    i.Labels[labels[`category`]],
 				Description: i.Labels[labels[`description`]],
+				Supports:    i.Labels[labels[`supports`]],
 			})
 		}
 	} else {

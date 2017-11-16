@@ -91,6 +91,7 @@ builtin-clean:
 
 builtin-prep:
 	@docker build -t v2c/guestfish-export:1 -f ./packager/guestfish-export.df ./packager/
+	@docker build -t v2c/tar-importer:1 -f ./packager/tar-importer.df ./packager/
 
 	@docker build -t v2c/centos-detective:v6.8   -f ./detectives/os.centos6.8.df ./detectives/
 	@docker build -t v2c/centos-provisioner:v6.8 -f ./provisioners/os.centos6.8.df ./provisioners/

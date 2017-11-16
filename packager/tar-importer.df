@@ -1,0 +1,8 @@
+FROM ubuntu:16.04
+LABEL com.docker.v2c.component=packager \
+      com.docker.v2c.component.category=export \
+      com.docker.v2c.component.builtin=1 \
+      com.docker.v2c.component.description=Copies\ tarball\ contents\ into\ /v2c/disk \
+      com.docker.v2c.component.supports=tar
+COPY tar-importer/run.sh /
+CMD ["/run.sh"]
