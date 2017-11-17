@@ -19,18 +19,16 @@ import (
 	"strings"
 )
 
-var (
-	labels = map[string]string{
-		`detective`:   `detective`,
-		`provisioner`: `provisioner`,
-		`packager`:    `packager`,
-		`product`:     `com.docker.v2c.product`,
-		`component`:   `com.docker.v2c.component`,
-		`category`:    `com.docker.v2c.component.category`,
-		`description`: `com.docker.v2c.component.description`,
-		`supports`:    `com.docker.v2c.component.supports`,
-		`related`:     `com.docker.v2c.component.rel`,
-	}
+const (
+	product     = "com.docker.v2c.product"
+	component   = "com.docker.v2c.component"
+	detective   = component + "=detective"
+	provisioner = component + "=provisioner"
+	packager    = component + "=packager"
+	category    = "com.docker.v2c.component.category"
+	description = "com.docker.v2c.component.description"
+	supports    = "com.docker.v2c.component.supports"
+	related     = "com.docker.v2c.component.rel"
 )
 
 type Components struct {
@@ -46,24 +44,90 @@ func DetectComponents() (Components, error) {
 		return result, err
 	}
 
+	if result.Packagers, err = detectPackagers(client); err != nil {
+		return result, err
+	}
+
+	if result.Provisioners, err = detectProvisoners(client); err != nil {
+		return result, err
+	}
+
+	if result.Detectives, err = detectDetectives(client); err != nil {
+		return result, err
+	}
+
+	pMap := make(map[string]bool)
+
+	for _, p := range result.Provisioners {
+		pMap[p.Repository+":"+p.Tag] = true
+	}
+
+	detectives := []api.Detective{}
+
+	for _, d := range result.Detectives {
+		if pMap[d.Related] {
+			detectives = append(detectives, d)
+		} else {
+			fmt.Printf("Filtering out detective (%v) as no matching provisioner\n", d.Repository+":"+d.Tag)
+		}
+	}
+
+	result.Detectives = detectives
+
+	return result, nil
+}
+
+func detectPackagers(client *docker.Client) ([]api.Packager, error) {
+	result := []api.Packager{}
+
 	f := filters.NewArgs()
-	f.Add(`label`, labels[`component`])
+	f.Add(`label`, packager)
 
 	components, err := client.ImageList(gcontext.Background(), types.ImageListOptions{Filters: f})
 	if err != nil {
 		return result, err
 	}
+
 	for _, img := range components {
-		if img.Labels[labels[`component`]] == labels[`detective`] {
-			result.Detectives = append(result.Detectives, detectivesFromImageSummary(img)...)
-		} else if img.Labels[labels[`component`]] == labels[`provisioner`] {
-			result.Provisioners = append(result.Provisioners, provisionersFromImageSummary(img)...)
-		} else if img.Labels[labels[`component`]] == labels[`packager`] {
-			result.Packagers = append(result.Packagers, packagersFromImageSummary(img)...)
-		} else {
-			panic(`Unknown component type detected: ` + img.ID)
-		}
+		result = append(result, packagersFromImageSummary(img)...)
 	}
+
+	return result, nil
+}
+
+func detectProvisoners(client *docker.Client) ([]api.Provisioner, error) {
+	result := []api.Provisioner{}
+
+	f := filters.NewArgs()
+	f.Add(`label`, provisioner)
+
+	components, err := client.ImageList(gcontext.Background(), types.ImageListOptions{Filters: f})
+	if err != nil {
+		return result, err
+	}
+
+	for _, img := range components {
+		result = append(result, provisionersFromImageSummary(img)...)
+	}
+
+	return result, nil
+}
+
+func detectDetectives(client *docker.Client) ([]api.Detective, error) {
+	result := []api.Detective{}
+
+	f := filters.NewArgs()
+	f.Add(`label`, detective)
+
+	components, err := client.ImageList(gcontext.Background(), types.ImageListOptions{Filters: f})
+	if err != nil {
+		return result, err
+	}
+
+	for _, img := range components {
+		result = append(result, detectivesFromImageSummary(img)...)
+	}
+
 	return result, nil
 }
 
@@ -74,7 +138,7 @@ func ListProducedImages() ([]api.Product, error) {
 		return result, err
 	}
 	f := filters.NewArgs()
-	f.Add(`label`, labels[`product`])
+	f.Add(`label`, product)
 
 	imgs, err := client.ImageList(gcontext.Background(), types.ImageListOptions{
 		Filters: f,
@@ -421,9 +485,9 @@ func detectivesFromImageSummary(i types.ImageSummary) []api.Detective {
 				ImageID:     i.ID,
 				Repository:  p[0],
 				Tag:         p[1],
-				Category:    i.Labels[labels[`category`]],
-				Description: i.Labels[labels[`description`]],
-				Related:     i.Labels[labels[`related`]],
+				Category:    i.Labels[category],
+				Description: i.Labels[description],
+				Related:     i.Labels[related],
 			})
 		}
 	} else {
@@ -431,8 +495,8 @@ func detectivesFromImageSummary(i types.ImageSummary) []api.Detective {
 			ImageID:     i.ID,
 			Repository:  `<none>`,
 			Tag:         `<none>`,
-			Category:    i.Labels[labels[`category`]],
-			Description: i.Labels[labels[`description`]],
+			Category:    i.Labels[category],
+			Description: i.Labels[description],
 		})
 	}
 	return result
@@ -450,8 +514,8 @@ func provisionersFromImageSummary(i types.ImageSummary) []api.Provisioner {
 				ImageID:     i.ID,
 				Repository:  p[0],
 				Tag:         p[1],
-				Category:    i.Labels[labels[`category`]],
-				Description: i.Labels[labels[`description`]],
+				Category:    i.Labels[category],
+				Description: i.Labels[description],
 			})
 		}
 	} else {
@@ -459,8 +523,8 @@ func provisionersFromImageSummary(i types.ImageSummary) []api.Provisioner {
 			ImageID:     i.ID,
 			Repository:  `<none>`,
 			Tag:         `<none>`,
-			Category:    i.Labels[labels[`category`]],
-			Description: i.Labels[labels[`description`]],
+			Category:    i.Labels[category],
+			Description: i.Labels[description],
 		})
 	}
 	return result
@@ -478,9 +542,9 @@ func packagersFromImageSummary(i types.ImageSummary) []api.Packager {
 				ImageID:     i.ID,
 				Repository:  p[0],
 				Tag:         p[1],
-				Category:    i.Labels[labels[`category`]],
-				Description: i.Labels[labels[`description`]],
-				Supports:    i.Labels[labels[`supports`]],
+				Category:    i.Labels[category],
+				Description: i.Labels[description],
+				Supports:    i.Labels[supports],
 			})
 		}
 	} else {
@@ -488,8 +552,9 @@ func packagersFromImageSummary(i types.ImageSummary) []api.Packager {
 			ImageID:     i.ID,
 			Repository:  `<none>`,
 			Tag:         `<none>`,
-			Category:    i.Labels[labels[`category`]],
-			Description: i.Labels[labels[`description`]],
+			Category:    i.Labels[category],
+			Description: i.Labels[description],
+			Supports:    i.Labels[supports],
 		})
 	}
 	return result
